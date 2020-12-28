@@ -22,5 +22,5 @@ I figured this to be a pretty simple algorithm. So I wrote code for it. And I sc
 Jenkins server every week. What I have to do now is just log in to k-ruoka.fi, add how much I want to 
 buy every item in my shopping cart, and approve of the purchase.
 
-Saves so much time and effort every week. Maybe some money, too. And last but not least, unlike myself,
-the bot never forgets anything.
+Saves so much time and effort every week. Maybe some money, too. And last but not least: unlike myself,
+the bot never forgets to bring anything from the store.
