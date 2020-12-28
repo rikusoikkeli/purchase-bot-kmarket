@@ -4,10 +4,11 @@ WHAT DOES THE CODE DO:
 
 1. The program takes a shopping list (an example can be found from the file items_to_buy.py)
 
-2. It goes to https://www.k-ruoka.fi/ and searches for every item
+2. It goes to https://www.k-ruoka.fi/ and searches for every item in the shopping list
 
-3. For every search, it chooses the least expensive item to add in the shopping cart
-(if the price is not more than price_constraint set in the shopping list.
+3. For every search, it chooses the least expensive variety to add in the shopping cart —
+if the price is not more than price_constraint set in the shopping list. If it is, then it
+skips that item.
 
 WHY DID I CREATE THIS:
 
