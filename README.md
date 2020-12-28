@@ -7,7 +7,7 @@ WHAT DOES THE CODE DO:
 2. It goes to https://www.k-ruoka.fi/ and searches for every item in the shopping list
 
 3. For every search, it chooses the least expensive variety to add in the shopping cart —
-if the price is not more than price_constraint set in the shopping list. If it is, then it
+if the price is less than price_constraint set in the shopping list. If it isn't, the bot
 skips that item.
 
 WHY DID I CREATE THIS:
