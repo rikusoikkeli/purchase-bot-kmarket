@@ -6,9 +6,12 @@ WHAT DOES THE CODE DO:
 
 2. It goes to https://www.k-ruoka.fi/ and searches for every item in the shopping list
 
-3. For every search, it chooses the least expensive variety to add in the shopping cart. Except
+3. For every search, it chooses the least expensive variety to add to the cart. Except
 if the least expensive variety costs more than price_constraint set in the shopping list. If that
 happens, the item is skipped.
+
+4. After shopping, it sends a summary of what happened to your chosen email address. What kind of
+items were chosen, if something was skipped, etc.
 
 WHY DID I CREATE THIS:
 
