@@ -22,6 +22,8 @@ def intoBase64(string_object):
     """
     Ottaa string-objektin ja palauttaa sen base64-muodossa.
     """
+    assert type(string_object) == str, "string_object should be string"
+    assert len(string_object) > 0, "string_object should be of length >0"
     string_object = string_object.encode()
     string_object = base64.b64encode(string_object)
     return string_object
@@ -31,7 +33,10 @@ def fromBase64(bytes_object):
     """
     Ottaa base64-objektin ja palauttaa sen string-muodossa.
     """
+    assert type(bytes_object) == str, "bytes_object should be a string"
+    assert len(bytes_object) > 0, "bytes_object should be of length >0"
     bytes_object = base64.b64decode(bytes_object)
+    assert type(bytes_object) == bytes, "bytes_object should be a bytes object"
     bytes_object = bytes_object.decode()
     return bytes_object
 
@@ -42,6 +47,8 @@ def getMailUser():
     stringiksi ja palauttaa.
     """
     user = fromBase64(os.environ.get("ROBOT_MAIL_USER"))
+    assert type(user) == str, "getMailUser() didn't fetch a string"
+    assert len(user) > 0, "user should be of length >0"
     return user
 
 
@@ -51,5 +58,7 @@ def getMailPass():
     stringiksi ja palauttaa.
     """
     password = fromBase64(os.environ.get("ROBOT_MAIL_PASS"))
+    assert type(password) == str, "getMailPass() didn't fetch a string"
+    assert len(password) > 0, "password should be of length >0"
     return password
 
