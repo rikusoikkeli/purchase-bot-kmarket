@@ -4,21 +4,30 @@ Created on Sat Dec 26 14:17:37 2020
 
 @author: rikus
 
+This Selenium-based bot will log into k-ruoka.fi and buy your groceries for you.
+It will user the parameters given in items_to_buy.py to find the cheapest products
+and add them to your cart. In the end it will send you a summary of what happened
+to your email.
 """
 
+
+from items_to_buy import *
+from mail_env_vars import *
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
-from items_to_buy import *
-# Alle käyttämäsi Firefox-selaimen profiilin tiedostopolku.
-FF_PROFILE_PATH = r"C:\Users\rikus\AppData\Roaming\Mozilla\Firefox\Profiles\selenium_test_profile_copy"
-import time
+from email.message import EmailMessage # the base class for the email object model
 import pandas as pd
+import time
+import smtplib # defines an SMTP client session object that can be used to send mail
 
+# Alle käyttämäsi Firefox-selaimen profiilin tiedostopolku.
+ff_profile_path = FILE PATH TO THE FIREFOX PROFILE YOU WANT TO USE
+summary_email_address = EMAIL ADDRESS WHERE YOU WANT SUMMARY TO BE SENT AFTER CODE HAS RUN
 
 # Määritetään webdriverin asetukset
 driver_options = Options()
 driver_options.headless = True
-profile = webdriver.FirefoxProfile(FF_PROFILE_PATH)
+profile = webdriver.FirefoxProfile(ff_profile_path)
 driver = webdriver.Firefox(profile, options=driver_options)
 driver.implicitly_wait(5)
 
@@ -30,6 +39,9 @@ def searchItem(search_term, category):
     """
     Tekee haun K-Ruokaan hakusanoilla search_term.
     """
+    assert type(search_term) == str, "search_term should be a string"
+    assert type(category) == str, "category should be a string"
+    
     driver.get("https://www.k-ruoka.fi/kauppa/tuotteet")
     time.sleep(2)
     
@@ -66,7 +78,7 @@ def scrollAllItems():
             break
 
 
-def downloadItems():
+def fetchItemInfo():
     """
     Lataa sivun kaikki tuotetiedot dictiin muotoon:
         tuotenumero : (nimi, hinta)
@@ -111,6 +123,8 @@ def convertToDF(search_results_dict):
     Palauttaa tuon tiedoston muutettuna dataframeksi, jossa on pylväät:
         "Tuotenimi", "Hinta", "Yksikkö"
     """
+    assert type(search_results_dict) == dict, "search_results_dict should be a dict"
+    
     # Asettaa Pandasin näyttämään kaikki DF-objektin pylväät konsolissa
     pd.set_option('display.expand_frame_repr', False)
     # Asettaa Pandasin näyttämään x määrän rivejä ennen kuin lyhentää
@@ -125,8 +139,9 @@ def convertToDF(search_results_dict):
     # Nimetään vanha index-pylväs uudestaan
     temp_df = temp_df.rename(columns={"index" : "Tuotenumero"})
     
-    # Luodaan uusi df, jossa "Hinta"-pylväs on jaettu "/"-merkin perusteella
-    price_columns_df = temp_df["Hinta"].str.split("/", expand=True)
+    # Luodaan uusi df, jossa "Hinta"-pylväs on jaettu "/" tai " "-merkin perusteella 
+    # (regular expression)
+    price_columns_df = temp_df["Hinta"].str.split(r"/|\s", expand=True) # 
     
     # Korvataan alkuperäisestä df "Hinta"-pylväs pelkällä hinnalla ja siirretään
     # yksikkötieto uuteen pylvääseen nimeltä "Yksikkö".
@@ -156,14 +171,10 @@ def convertToDF(search_results_dict):
     temp_df = temp_df.reset_index(drop=True)
     search_results_df = temp_df
     
-    print("Löydetyt tuotteet:")
-    print(search_results_df)
-    print("")
-    
     return search_results_df
 
 
-def findCheapestItem(search_results_df, price_constraint, unit_constraint):
+def getCheapestItem(search_results_df, price_constraint, unit_constraint):
     """
     search_results_df: DF-objekti, jossa pylväät "Tuotenumero", "Tuotenimi", "Hinta", "Yksikkö"
     price_constraint: korkein hyväksytty hinta tuottelle (int)
@@ -171,6 +182,12 @@ def findCheapestItem(search_results_df, price_constraint, unit_constraint):
     
     Palauttaa halvimman tuotteen, joka täyttää ehdot. Muussa tapauksessa palauttaa None
     """
+    assert type(search_results_df) == pd.core.frame.DataFrame, "search_results_df should be a pandas dataframe"
+    assert type(price_constraint) == int or type(price_constraint) == float, "price_constraint should be an int or float"
+    assert price_constraint > 0, "price_constraint should be >0"
+    assert type(unit_constraint) == str, "unit_constraint should be a string"
+    assert unit_constraint == "kg" or unit_constraint == "l" or unit_constraint == "kpl", "unit_constraint should be kg/l/kpl"
+    
     return_index = -1
     length = search_results_df.shape[0]
     for i in range(length):
@@ -180,21 +197,92 @@ def findCheapestItem(search_results_df, price_constraint, unit_constraint):
             return_index = i
             break
     if return_index < 0:
-        print("Ei valittu tuotetta.")
         return None
     else:
-        print("Valittiin tuote:")
-        print(search_results_df.iloc[return_index,:])
-        return search_results_df.iloc[return_index,:]
+        cheapest_item_df = search_results_df.iloc[return_index,:]
+        return cheapest_item_df
 
 
-def addToCartClick():
+def addToCart(product_number):
     """
     Lisää tuotteen ostoskoriin.
     """
-    add_to_cart_path = '//button[@title="Lisää"]'
-    add_to_cart = driver.find_element_by_xpath(add_to_cart_path)
-    add_to_cart.click()
+    product_html_id = f"product-result-item-{product_number}"
+    product_html_element = driver.find_element_by_id(product_html_id)
+    add_to_cart_xpath = '//button[@title="Lisää"]'
+    add_to_cart_element = product_html_element.find_element_by_xpath(add_to_cart_xpath)
+    add_to_cart_element.click()
+
+
+def cheapestItemToString(cheapest_item_df):
+    """
+    Muutetaan cheapest_item_df (dataframe) stringiksi.
+    """
+    assert type(cheapest_item_df) == pd.core.series.Series, "cheapest_item_df should be a pandas series"
+    
+    item_number = str(cheapest_item_df["Tuotenumero"])
+    item_name = str(cheapest_item_df["Tuotenimi"])
+    item_price = str(cheapest_item_df["Hinta"])
+    item_unit = str(cheapest_item_df["Yksikkö"])
+    cheapest_item_str = f"{item_number}; {item_name}; {item_price}; {item_unit}"
+    return cheapest_item_str
+
+
+def composeSummary(items_found, items_not_found):
+    """
+    Luodaan yhteenveto ostotapahtumista (str)
+    
+    items_found: lista stringejä
+    items_not_found: lista stringejä
+    """
+    assert type(items_found) == list, "items_found should be a list"
+    assert type(items_not_found) == list, "items_not_found should be a list"
+    if len(items_found) > 0:
+        assert type(items_found[0]) == str, "items_found should be a list of strings"
+    if len(items_not_found) > 0:
+        assert type(items_not_found[0]) == str, "items_not_found should be a list of strings"
+    
+    # Luodaan yhteenveto ostotapahtumista
+    summary = ""
+    
+    found_title = "Nämä tuotteet lisättiin ostoskoriin:\n"
+    summary += found_title + "\n"
+    if len(items_found) > 0:
+        for item in items_found:
+            summary += item + "\n"
+    else:
+        summary += "<tyhjä>\n"
+    
+    not_found_title = "\nNäillä hakutermeillä ei löydetty mitään:\n"
+    summary += not_found_title + "\n"
+    if len(items_not_found) > 0:
+        for item in items_not_found:
+            summary += item + "\n"
+    else:
+        summary += "<tyhjä>\n"
+
+    return summary
+
+
+def sendToMail(summary, summary_email_address):
+    """
+    Lähetetään yhteenveto ostotapahtumista valittuun s-postiin summary_email_address
+    
+    summary: yhteenveto ostotapahtumista (str)
+    summary_email_address: s-postiosoite, johon yhteenveto halutaan (str)
+    """
+    assert type(summary) == str, "summary should be a string"
+    assert type(summary_email_address) == str, "summary_email_address should be a string"
+    
+    msg = EmailMessage()
+    msg["Subject"] = "Ostoskorisi osoitteessa k-ruoka.fi"
+    msg["From"] = getMailUser()
+    msg["To"] = summary_email_address
+    msg.set_content(summary)
+    
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp: # SSL-salauksella portin tulee olla 465
+        smtp.login(getMailUser(), getMailPass()) # haetaan kirjautumistiedot environment variablesista
+        smtp.send_message(msg)
 
 
 def buy(shopping_list):
@@ -202,31 +290,50 @@ def buy(shopping_list):
     Ottaa ostoslistan (list), etsii jokaisesta tuotteesta halvimman version k-market.fi
     verkkokaupasta ja lisää ostoskoriin, mikäli price_constraint sallii.
     """
+    assert type(shopping_list) == list, "shopping_list should be a list"
+    for item in shopping_list:
+        assert type(item) == tuple, "shopping_list should comprise tuples"
+        assert len(item) == 4, "shopping_list tuples should be of length 4"
+        assert type(item[0]) == str, "shopping_list tuples' index 0 should be a string"
+        assert type(item[1]) == str, "shopping_list tuples' index 1 should be a string"
+        assert type(item[2]) == int, "shopping_list tuples' index 2 should be an int"
+        assert type(item[3]) == str, "shopping_list tuples' index 3 should be a string"
+        
+    print("Ostaminen alkaa...")
+    time.sleep(5)
+    items_found = []
+    items_not_found = []
     for article in shopping_list:
+        print("")
         search_term = article[0]
         category = article[1]
         price_constraint = article[2]
         unit_constraint = article[3]
         
+        print(f'Haetaan hakusanalla: "{search_term}"\n')
         searchItem(search_term, category)
         scrollAllItems()
-        search_results_dict = downloadItems()
+        search_results_dict = fetchItemInfo()
         search_results_df = convertToDF(search_results_dict)
-        cheapest_item = findCheapestItem(search_results_df, price_constraint, unit_constraint)
+        print("Löydettiin nämä tuotteet:")
+        print(search_results_df)
         print("")
+        cheapest_item_df = getCheapestItem(search_results_df, price_constraint, unit_constraint)
         try:
-            cheapest_item_product_number = cheapest_item["Tuotenumero"]
-            searchItem(cheapest_item_product_number, category)
-            time.sleep(2)
-            addToCartClick()
+            cheapest_item_product_number = cheapest_item_df["Tuotenumero"]
+            addToCart(cheapest_item_product_number)
+            cheapest_item_str = cheapestItemToString(cheapest_item_df)
+            items_found.append(cheapest_item_str)
+            print(f"Valittiin ostoskoriin: {cheapest_item_str}")
         except:
-            pass
+            print("Mikään tuotteista ei täyttänyt ostoslistan rajoituksia.")
+            items_not_found.append(search_term)
+    print("\nValmis!\n")
+    return items_found, items_not_found
 
 
-print("Ostaminen alkaa...")
-print("")
-time.sleep(5)
-buy(shopping_list)
-print("Valmis!")
-
+items_found, items_not_found = buy(shopping_list)
+summary = composeSummary(items_found, items_not_found)
+sendToMail(summary, summary_email_address)
+driver.quit()
 
